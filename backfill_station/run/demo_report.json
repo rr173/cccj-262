@@ -121,6 +121,50 @@
     }
   ],
   "anomaly_count": 17,
+  "archives": [
+    {
+      "archive_id": "ARC-INSTR-FULL",
+      "block_ids": [
+        "b1",
+        "b2",
+        "b3",
+        "b4"
+      ],
+      "blocks_total": 4,
+      "length": 900,
+      "missing_block_ids": [],
+      "path": "instrument/full_profile.dat",
+      "ready": true,
+      "sha256": "41bcc1e97cc5d4c6b5fdaab402a19f5bb6a29f63305fa5252b0e0a1424a9da93"
+    },
+    {
+      "archive_id": "ARC-INSTR-B14",
+      "block_ids": [
+        "b1",
+        "b4"
+      ],
+      "blocks_total": 2,
+      "length": 450,
+      "missing_block_ids": [],
+      "path": "instrument/b14_pair.dat",
+      "ready": true,
+      "sha256": "cd0a47c129fe4158cf487ecb81b35b0b060fbc97b6bf6fdfe27f57b2fbf04a8c"
+    },
+    {
+      "archive_id": "ARC-PENDING-B5",
+      "block_ids": [
+        "b5"
+      ],
+      "blocks_total": 1,
+      "length": 400,
+      "missing_block_ids": [
+        "b5"
+      ],
+      "path": "pending/b5_only.dat",
+      "ready": false,
+      "sha256": "61db942f23fb0c5e3d20a16b2d7f593f21868b0949700fbc0175180b00c74467"
+    }
+  ],
   "batch_id": "BATCH-DEMO-001",
   "delivery": {
     "blocks_delivered": 4,

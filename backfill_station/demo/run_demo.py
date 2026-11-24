@@ -33,6 +33,7 @@ RUN_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
                         "run")
 DATA_DIR = os.path.join(RUN_ROOT, "demo_data")
 FIXTURE_DIR = os.path.join(RUN_ROOT, "demo_fixture")
+ARCHIVE_DIR = os.path.join(RUN_ROOT, "demo_archives")
 REPORT_PATH = os.path.join(RUN_ROOT, "demo_report.json")
 JOURNAL_COPY = os.path.join(RUN_ROOT, "demo_journal_copy.jsonl")
 
@@ -63,6 +64,28 @@ def main() -> int:
     # 额度高于整批全长，为重复尝试/坏字节留空间；结尾留一笔未终止的
     # b5 许可按封顶 400 保留，使可用额度跌破 400，新的 b5 许可必被拒。
     quota = 2300
+
+    # ---- 档案产物声明：不同档案可引用同一块，路径限定在输出目录内 ----
+    archive_full = b"".join(contents[bid] for bid in ("b1", "b2", "b3", "b4"))
+    archive_b14 = contents["b1"] + contents["b4"]      # 与 full 共享 b1/b4
+    archives = [
+        {"archive_id": "ARC-INSTR-FULL",
+         "path": os.path.join("instrument", "full_profile.dat"),
+         "block_ids": ["b1", "b2", "b3", "b4"],
+         "length": len(archive_full),
+         "sha256": digest_payload(archive_full)},
+        {"archive_id": "ARC-INSTR-B14",
+         "path": os.path.join("instrument", "b14_pair.dat"),
+         "block_ids": ["b1", "b4"],
+         "length": len(archive_b14),
+         "sha256": digest_payload(archive_b14)},
+        # b5 始终缺块：该档案在恢复时必须被整体挡下、不生成文件。
+        {"archive_id": "ARC-PENDING-B5",
+         "path": "pending/b5_only.dat",
+         "block_ids": ["b5"],
+         "length": len(contents["b5"]),
+         "sha256": digest_payload(contents["b5"])},
+    ]
     manifest = {
         "batch_id": "BATCH-DEMO-001",
         "quota_bytes": quota,
@@ -71,8 +94,11 @@ def main() -> int:
              "sha256": digest_payload(contents[bid])}
             for bid in sorted(lengths)
         ],
+        "archives": archives,
     }
     print(f"清单块全长合计 {sum(lengths.values())}，批次额度 {quota}")
+    print(f"档案产物声明 {len(archives)} 个，"
+          f"其中 ARC-PENDING-B5 依赖始终缺块的 b5")
 
     station = Station.initialize(DATA_DIR, manifest, HMAC_KEY)
     fixture = TransmissionFixture(FIXTURE_DIR, HMAC_KEY)
@@ -325,6 +351,43 @@ def main() -> int:
           f"{[b['block_id'] for b in report['missing_blocks']]}")
     print(f"异常登记 {report['anomaly_count']} 条，报告已写 {REPORT_PATH}")
     print(f"日志副本 {JOURNAL_COPY}（可独立执行 replay 子命令重演）")
+
+    # ---- 9. 档案恢复：组装已核验块，缺块档案整体挡下，重复恢复幂等 ----
+    banner("阶段八：档案恢复（原子发布，缺块不生成文件，重复恢复一致）")
+    with station.open() as st:
+        restore_report = st.restore_archives(ARCHIVE_DIR)
+        seq_after_restore = st.ledger.last_seq
+    print("  首次恢复:")
+    for item in restore_report["results"]:
+        print(f"    {item['archive_id']:16s} {item['state']:16s} "
+              f"{item['path']} {item['detail']}")
+    # 再恢复一次：已发布文件应被原样确认，不重写、不改权限
+    with station.open() as st:
+        again = st.restore_archives(ARCHIVE_DIR)
+        assert st.ledger.last_seq == seq_after_restore, "恢复不得新增日志事件"
+    states_again = {r["archive_id"]: r["state"] for r in again["results"]}
+    print("  二次恢复状态:", states_again)
+    assert all(s == "verified_existing"
+               for aid, s in states_again.items() if aid != "ARC-PENDING-B5")
+    assert states_again["ARC-PENDING-B5"] == "blocked"
+
+    # 发布结果逐字节核对；缺块档案在输出目录中不存在（含其父目录）
+    full_path = os.path.join(ARCHIVE_DIR, "instrument", "full_profile.dat")
+    pair_path = os.path.join(ARCHIVE_DIR, "instrument", "b14_pair.dat")
+    with open(full_path, "rb") as fh:
+        assert fh.read() == archive_full
+    with open(pair_path, "rb") as fh:
+        assert fh.read() == archive_b14
+    assert not os.path.exists(os.path.join(ARCHIVE_DIR, "pending"))
+    # 输出目录不得残留隐藏临时文件
+    leftovers = []
+    for dirpath, _dirs, files in os.walk(ARCHIVE_DIR):
+        leftovers += [f for f in files if f.startswith(".archive.tmp.")]
+    assert not leftovers
+    print(f"  已发布: {full_path}")
+    print(f"  已发布: {pair_path}")
+    print("  ARC-PENDING-B5 因缺块 b5 未生成任何文件；无临时文件残留；"
+          "日志序号未变")
     return 0
 
 

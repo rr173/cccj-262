@@ -18,6 +18,7 @@ from .canonical import canonical_json
 from .fixture import iter_spool_file
 from .journal import Journal
 from .manifest import Manifest
+from .restore import RestoreError, archive_readiness
 from .station import Station, StationError
 from .state import Ledger, replay
 
@@ -155,6 +156,7 @@ def _report_from_ledger(ledger: Ledger) -> dict[str, Any]:
                 for bid, b in ledger.blocks.items() if b.delivered],
         },
         "missing_blocks": missing,
+        "archives": archive_readiness(ledger),
         "permits": [{
             "permit_id": p.permit_id, "block_id": p.block_id, "cap": p.cap,
             "status": p.status, "max_progress": p.max_progress,
@@ -206,6 +208,25 @@ def cmd_spool(args: argparse.Namespace) -> int:
                 _emit({"receipt": receipt, "result": result.to_dict()})
     _emit({"ok": True, "receipts_processed": processed,
            "receipts_rejected_as_anomaly": rejects})
+    return EXIT_OK
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    """档案恢复：已核验块按清单顺序组装并原子发布到输出目录。
+
+    退出码：全部档案已发布（或本就没有档案声明）0；存在缺块被挡下
+    的档案 2；路径越界/块仓库损坏等致命错误 4。
+    """
+    station = _open_station(args.data_dir)
+    with station.open():
+        try:
+            result = station.restore_archives(args.output_dir)
+        except RestoreError as exc:
+            _emit({"ok": False, "error": str(exc)})
+            return EXIT_FATAL
+    _emit(result)
+    if result["archives_blocked"]:
+        return EXIT_BUSINESS_REJECT
     return EXIT_OK
 
 
@@ -261,6 +282,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--verbose", action="store_true")
     p.set_defaults(func=cmd_spool)
 
+    p = sub.add_parser("restore", help="把已核验块恢复成完整档案文件")
+    p.add_argument("--data-dir", required=True)
+    p.add_argument("--output-dir", required=True,
+                   help="档案发布目录；清单相对路径不得越出该目录")
+    p.set_defaults(func=cmd_restore)
+
     return parser
 
 
@@ -269,6 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except RestoreError as exc:
+        _emit({"ok": False, "error": str(exc)})
+        return EXIT_FATAL
     except (StationError, ValueError, KeyError, FileNotFoundError) as exc:
         _emit({"ok": False, "error": str(exc)})
         return EXIT_USAGE

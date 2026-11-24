@@ -12,8 +12,10 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .canonical import digest_payload, verify_signature
+from .block_store import BlockStore
 from .journal import DataDirLock, Event, Journal, JOURNAL_NAME
 from .manifest import Manifest
+from .restore import archive_readiness, restore_archives
 from .state import Ledger, ST_CONFIRMED, ST_OPEN, replay
 
 HMAC_KEY_NAME = "hmac.key"
@@ -65,6 +67,7 @@ class Station:
         self._journal: Optional[Journal] = None
         self.ledger: Optional[Ledger] = None
         self.hmac_key: bytes = b""
+        self.block_store = BlockStore(data_dir)
 
     # ---- 生命周期 ----
     @classmethod
@@ -432,13 +435,30 @@ class Station:
             return CommandResult(True, "block_already_delivered_ignored",
                                  f"块 {block_id} 已由许可 "
                                  f"{block.delivered_by_permit} 交付")
+        # 先把三核对通过的载荷原子落入块仓库（派生产物），再追加
+        # block_verified 事件：仓库文件必然不晚于交付事件可见，
+        # 恢复档案时只信任仓库中可再次复核的块。
+        stored_path = self.block_store.store(block_id, bytes(payload))
         event = self._append("block_verified", {
             "permit_id": permit_id, "block_id": block_id,
             "length": spec.length, "sha256": spec.sha256,
+            "stored_path": os.path.relpath(stored_path, self.data_dir),
         })
         return CommandResult(True, "block_verified", event_seq=event.seq)
 
-    # ---- 5. 对账报告 ----
+    # ---- 5. 档案恢复（数据侧派生操作，不进日志、不动钱账） ----
+    def restore_archives(self, output_dir: str) -> dict[str, Any]:
+        """把已核验块按清单顺序组装成完整档案并原子发布到输出目录。
+
+        - 缺块的档案整体跳过且不产生任何新文件，并报告缺少的块；
+        - 发布前逐块复核、再核对整档总长度与 SHA-256，全部匹配才
+          os.replace 原子发布，读取者看不到部分文件；
+        - 不追加日志事件，许可/额度/收据账完全不变；重复恢复幂等。
+        """
+        ledger = self._require_ready()
+        return restore_archives(ledger, self.block_store, output_dir)
+
+    # ---- 6. 对账报告 ----
     def report(self) -> dict[str, Any]:
         ledger = self._require_ready()
         m = ledger.manifest
@@ -492,6 +512,7 @@ class Station:
                 "delivered": delivered,
             },
             "missing_blocks": missing,
+            "archives": archive_readiness(ledger),
             "permits": permits_view,
             "anomalies": list(ledger.anomalies),
             "anomaly_count": len(ledger.anomalies),
