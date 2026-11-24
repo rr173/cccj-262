@@ -290,3 +290,26 @@ def replay(events: list[Event]) -> Ledger:
     for event in events:
         ledger.apply(event)
     return ledger
+
+
+def shared_pool_view(ledger: Ledger) -> Optional[dict[str, Any]]:
+    """报告用：本批共享池配置的纯账本派生视图（不触碰池文件系统）。
+
+    只含清单冻结的配置与本批已交付块的内容摘要，实时的跨批次关联与
+    物理占用由 `pool-inventory` 命令按池查看，因此该视图可由日志独立
+    重放并与实时报告逐字段一致。
+    """
+    spec = ledger.manifest.shared_pool if ledger.manifest else None
+    if spec is None:
+        return None
+    delivered_digests = sorted({
+        b.spec.sha256 for b in ledger.blocks.values() if b.delivered
+    })
+    return {
+        "pool_id": spec.pool_id,
+        "pool_path": spec.path,
+        "delivered_content_digests": delivered_digests,
+        "delivered_distinct_contents": len(delivered_digests),
+        "note": "按内容（SHA-256）复用块存储；跨批次关联与物理占用请用 "
+                "pool-inventory 按池查看",
+    }

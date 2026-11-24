@@ -14,9 +14,9 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
-from .canonical import canonical_json
+from .canonical import canonical_json, digest_payload, canonical_bytes
 
 MANIFEST_NAME = "manifest.json"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -29,6 +29,39 @@ class ManifestError(ValueError):
 
 def _is_hex64(sha: Any) -> bool:
     return isinstance(sha, str) and bool(_HEX64.match(sha.lower()))
+
+
+@dataclass(frozen=True)
+class SharedPoolSpec:
+    """可选共享块池配置：配置到同一池的批次按内容复用块存储。
+
+    path 在开账冻结时规范化为绝对真实路径并随清单冻结，之后批次仅凭
+    清单即可定位池，不依赖调用时的工作目录。pool_id 由该路径确定性
+    导出，指向同一物理池的两个批次必然得到同一 pool_id。
+    """
+    pool_id: str
+    path: str
+
+    @staticmethod
+    def derive_pool_id(real_path: str) -> str:
+        return digest_payload(canonical_bytes({"shared_pool_path": real_path}))[:16]
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "SharedPoolSpec":
+        if not isinstance(raw, Mapping):
+            raise ManifestError("shared_pool 必须是对象")
+        raw_path = raw.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
+            raise ManifestError("shared_pool.path 必须是非空字符串")
+        if "\x00" in raw_path:
+            raise ManifestError("shared_pool.path 含 NUL 字节")
+        # 开账即冻结：把相对路径按当前工作目录解析成绝对真实路径，
+        # 避免同一池在不同工作目录下被解释成不同位置。
+        real_path = os.path.realpath(raw_path)
+        return cls(pool_id=cls.derive_pool_id(real_path), path=real_path)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"pool_id": self.pool_id, "path": self.path}
 
 
 def _validate_archive_path(raw: Any) -> str:
@@ -123,6 +156,7 @@ class Manifest:
     quota_bytes: int
     blocks: tuple[BlockSpec, ...]
     archives: tuple[ArchiveSpec, ...] = ()
+    shared_pool: Optional[SharedPoolSpec] = None
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "Manifest":
@@ -174,8 +208,16 @@ class Manifest:
         # 注意：不强制块全长合计 <= 额度。单个账期的额度可能小于整批
         # 总量（缺口留待后续账期/回补），运行时准入控制负责保证任何
         # 时刻在手义务不超过本账期额度。
+
+        # 共享块池为可选配置：没有该字段的旧批次继续按原方式工作，
+        # 已核验块只落在本批数据目录自己的 blocks/ 仓库。
+        raw_pool = raw.get("shared_pool")
+        if raw_pool is None:
+            shared_pool = None
+        else:
+            shared_pool = SharedPoolSpec.from_dict(raw_pool)
         return cls(batch_id=batch_id, quota_bytes=quota, blocks=blocks,
-                   archives=archives)
+                   archives=archives, shared_pool=shared_pool)
 
     def get(self, block_id: str) -> BlockSpec | None:
         for spec in self.blocks:
@@ -201,6 +243,8 @@ class Manifest:
         }
         if self.archives:
             out["archives"] = [a.to_dict() for a in self.archives]
+        if self.shared_pool is not None:
+            out["shared_pool"] = self.shared_pool.to_dict()
         return out
 
     def write(self, data_dir: str) -> str:

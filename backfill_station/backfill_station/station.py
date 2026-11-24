@@ -16,7 +16,8 @@ from .block_store import BlockStore
 from .journal import DataDirLock, Event, Journal, JOURNAL_NAME
 from .manifest import Manifest
 from .restore import archive_readiness, remove_published_file, restore_archives
-from .state import Ledger, ST_CONFIRMED, ST_OPEN, replay
+from .shared_pool import PoolBlockStorage, SharedBlockPool, SharedPoolError
+from .state import Ledger, ST_CONFIRMED, ST_OPEN, replay, shared_pool_view
 
 HMAC_KEY_NAME = "hmac.key"
 
@@ -67,7 +68,23 @@ class Station:
         self._journal: Optional[Journal] = None
         self.ledger: Optional[Ledger] = None
         self.hmac_key: bytes = b""
+        # 本地块仓库始终实例化：未配置共享池的批次、以及旧批次都用它；
+        # 配置了共享池的批次改走 _storage() 返回的池适配后端。
         self.block_store = BlockStore(data_dir)
+
+    def _storage(self):
+        """当前批次实际使用的块存储后端。
+
+        锁序约定：调用方已持有本批数据目录锁；池操作内部再取池锁，
+        即“先批次锁、后池锁”，全系统统一顺序，不会形成锁环。
+        """
+        ledger = self._require_ready()
+        spec = ledger.manifest.shared_pool
+        if spec is None:
+            return self.block_store
+        return PoolBlockStorage(
+            SharedBlockPool(spec.path), ledger.manifest.batch_id,
+            self.data_dir)
 
     # ---- 生命周期 ----
     @classmethod
@@ -435,14 +452,36 @@ class Station:
             return CommandResult(True, "block_already_delivered_ignored",
                                  f"块 {block_id} 已由许可 "
                                  f"{block.delivered_by_permit} 交付")
-        # 先把三核对通过的载荷原子落入块仓库（派生产物），再追加
-        # block_verified 事件：仓库文件必然不晚于交付事件可见，
-        # 恢复档案时只信任仓库中可再次复核的块。
-        stored_path = self.block_store.store(block_id, bytes(payload))
+        # 先把三核对通过的载荷原子落入块存储（派生产物），再追加
+        # block_verified 事件：存储对象必然不晚于交付事件可见，
+        # 恢复档案时只信任可再次复核的块。
+        # - 未配置共享池：落本批数据目录的 blocks/ 仓库（原方式）；
+        # - 配置共享池：按内容落入池中并登记本批关联，同内容的其他
+        #   批次/块身份复用同一物理对象。池内部自带持久日志与锁，
+        #   关联在批次交付事件之前确认，崩溃窗口由池 GC/对账收敛。
+        storage = self._storage()
+        if getattr(storage, "is_pool", False):
+            stored_path = storage.store(
+                block_id, bytes(payload),
+                length=spec.length, sha256=spec.sha256)
+            storage_ref = {
+                "backend": "shared_pool",
+                "pool_id": ledger.manifest.shared_pool.pool_id,
+                "pool_path": ledger.manifest.shared_pool.path,
+                "sha256": spec.sha256,
+                "stored_path": os.path.relpath(stored_path,
+                                               ledger.manifest.shared_pool.path),
+            }
+        else:
+            stored_path = storage.store(block_id, bytes(payload))
+            storage_ref = {
+                "backend": "local_block_store",
+                "stored_path": os.path.relpath(stored_path, self.data_dir),
+            }
         event = self._append("block_verified", {
             "permit_id": permit_id, "block_id": block_id,
             "length": spec.length, "sha256": spec.sha256,
-            "stored_path": os.path.relpath(stored_path, self.data_dir),
+            "storage": storage_ref,
         })
         return CommandResult(True, "block_verified", event_seq=event.seq)
 
@@ -456,7 +495,7 @@ class Station:
         - 不追加日志事件，许可/额度/收据账完全不变；重复恢复幂等。
         """
         ledger = self._require_ready()
-        return restore_archives(ledger, self.block_store, output_dir)
+        return restore_archives(ledger, self._storage(), output_dir)
 
     # ---- 6. 档案退役（标记退役 + 移除已发布文件 + 回收专属块存储） ----
     def retire_archives(self, archive_ids: Any,
@@ -501,7 +540,9 @@ class Station:
             event_seq = event.seq
 
         # 文件清理对每次请求都执行（幂等）：既移除本次请求涉及的已发布
-        # 文件，也全局清扫当前只被退役档案引用的块存储文件。
+        # 文件，也全局清扫当前只被退役档案引用的块存储。
+        storage = self._storage()
+        use_pool = getattr(storage, "is_pool", False)
         removed_files = []
         per_archive = []
         for archive_id in requested:
@@ -517,10 +558,34 @@ class Station:
                 "removed_file": removed,
             })
 
+        # 只撤销本批次不再需要的关联/回收本批仓库文件：
+        # - 本地仓库（无池）：删除本批 blocks/ 下不再被未退役档案引用
+        #   的块文件（既有语义，无论是否交付过）；
+        # - 共享池：只对本批已确认交付的块撤销关联；池在该对象不再关联
+        #   任何批次后才真正删除物理对象，其他批次的档案恢复不受影响。
         reclaimed_now = []
-        for block_id in ledger.reclaimable_block_ids():
-            if self.block_store.remove(block_id):
+        pool_released = []
+        pool_objects_deleted = []
+        if use_pool:
+            reclaimable = set(ledger.reclaimable_block_ids())
+            for block_id in sorted(reclaimable):
+                block = ledger.blocks[block_id]
+                if not block.delivered:
+                    continue  # 未交付块从未在池中建立关联，无需撤销
+                result = storage.remove(block_id, sha256=block.spec.sha256)
+                pool_released.append({
+                    "block_id": block_id, "sha256": block.spec.sha256,
+                    "status": result["status"],
+                    "remaining_links": result.get("remaining_links"),
+                    "storage_released": result.get("storage_released", False),
+                })
+                if result.get("storage_released"):
+                    pool_objects_deleted.append(block.spec.sha256)
                 reclaimed_now.append(block_id)
+        else:
+            for block_id in ledger.reclaimable_block_ids():
+                if self.block_store.remove(block_id):
+                    reclaimed_now.append(block_id)
 
         return {
             "ok": True,
@@ -536,6 +601,9 @@ class Station:
             "blocks_reclaimed_now": reclaimed_now,
             "retained_block_ids": ledger.retained_block_ids(),
             "reclaimed_block_ids": ledger.reclaimed_block_ids(),
+            "storage_backend": "shared_pool" if use_pool else "local_block_store",
+            "pool_links_released": pool_released,
+            "pool_objects_deleted": pool_objects_deleted,
         }
 
     # ---- 7. 对账报告 ----
@@ -602,6 +670,7 @@ class Station:
             "missing_blocks": missing,
             "archives": archive_readiness(ledger),
             "retired_archives": sorted(ledger.retired_archives),
+            "shared_pool": shared_pool_view(ledger),
             "permits": permits_view,
             "anomalies": list(ledger.anomalies),
             "anomaly_count": len(ledger.anomalies),

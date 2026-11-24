@@ -1,0 +1,9 @@
+{
+  "journal_last_seq": 10,
+  "links_total": 0,
+  "objects": [],
+  "objects_occupying_storage": 0,
+  "objects_total": 0,
+  "ok": true,
+  "pool_dir": "/workspace/backfill_station/run/demo_shared_pool"
+}

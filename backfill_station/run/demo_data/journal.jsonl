@@ -40,10 +40,10 @@
 {"payload":{"block_id":null,"code":"receipt_exceeds_cap","detail":"许可 P1 收据字节 201 超过封顶 200","permit_id":"P1"},"seq":40,"ts":40,"type":"anomaly"}|crc=3db3c50d
 {"payload":{"block_id":null,"code":"receipt_progress_beyond_final","detail":"许可 P2 进度 150 超过已立终值 100","permit_id":"P2"},"seq":41,"ts":41,"type":"anomaly"}|crc=939cb036
 {"payload":{"block_id":null,"code":"final_receipt_value_conflict","detail":"许可 P1 终值冲突：已立 200，又报 205","permit_id":"P1"},"seq":42,"ts":42,"type":"anomaly"}|crc=bf65b9bb
-{"payload":{"block_id":"b1","length":200,"permit_id":"P1","sha256":"26f8fe002187cb436a991eda3afdd6ce5f58ff7adbad651b495a2ee63d226ba6","stored_path":"blocks/6231.bin"},"seq":43,"ts":43,"type":"block_verified"}|crc=800b0916
+{"payload":{"block_id":"b1","length":200,"permit_id":"P1","sha256":"26f8fe002187cb436a991eda3afdd6ce5f58ff7adbad651b495a2ee63d226ba6","storage":{"backend":"local_block_store","stored_path":"blocks/6231.bin"}},"seq":43,"ts":43,"type":"block_verified"}|crc=daf35db0
 {"payload":{"block_id":"b3","permit_id":"P3","reason":"摘要 d5e2e31004c8d723... 与清单不符"},"seq":44,"ts":44,"type":"block_rejected"}|crc=bd8d8eb2
 {"payload":{"block_id":"b3","code":"block_digest_mismatch","detail":"摘要 d5e2e31004c8d723... 与清单不符","permit_id":"P3"},"seq":45,"ts":45,"type":"anomaly"}|crc=936b716f
-{"payload":{"block_id":"b4","length":250,"permit_id":"P4","sha256":"f7fb44c3f9239ccef24071af4145e6539d0e1786d08f6d7a352c142746ec6342","stored_path":"blocks/6234.bin"},"seq":46,"ts":46,"type":"block_verified"}|crc=1b9644e4
+{"payload":{"block_id":"b4","length":250,"permit_id":"P4","sha256":"f7fb44c3f9239ccef24071af4145e6539d0e1786d08f6d7a352c142746ec6342","storage":{"backend":"local_block_store","stored_path":"blocks/6234.bin"}},"seq":46,"ts":46,"type":"block_verified"}|crc=41e375e8
 {"payload":{"block_id":"b5","permit_id":"P5","reason":"长度 350 != 清单长度 400"},"seq":47,"ts":47,"type":"block_rejected"}|crc=6e3179dc
 {"payload":{"block_id":"b5","code":"block_length_mismatch","detail":"长度 350 != 清单长度 400","permit_id":"P5"},"seq":48,"ts":48,"type":"anomaly"}|crc=bfc1d152
 {"payload":{"block_id":"b4","code":"block_permit_target_mismatch","detail":"许可 P6 绑定块 b1，不得提交块 b4","permit_id":"P6"},"seq":49,"ts":49,"type":"anomaly"}|crc=e456ad08
@@ -58,12 +58,12 @@
 {"payload":{"bytes_reported":300,"kind":"progress","permit_id":"P7","receipt_seq":1},"seq":58,"ts":58,"type":"receipt_accepted"}|crc=faedb63d
 {"payload":{"bytes_reported":300,"closed":true,"kind":"final","permit_id":"P7","receipt_seq":2},"seq":59,"ts":59,"type":"receipt_accepted"}|crc=ecc92dd2
 {"payload":{"cap":300,"cert_id":"TC-P7-0011","final_value":300,"permit_id":"P7","released_bytes":0},"seq":60,"ts":60,"type":"termination_confirmed"}|crc=fa5931b2
-{"payload":{"block_id":"b2","length":300,"permit_id":"P7","sha256":"fc344deecde0146d43b02f1327756dd870ba4b9cd8696bf5c711fde2a280be35","stored_path":"blocks/6232.bin"},"seq":61,"ts":61,"type":"block_verified"}|crc=23e24a60
+{"payload":{"block_id":"b2","length":300,"permit_id":"P7","sha256":"fc344deecde0146d43b02f1327756dd870ba4b9cd8696bf5c711fde2a280be35","storage":{"backend":"local_block_store","stored_path":"blocks/6232.bin"}},"seq":61,"ts":61,"type":"block_verified"}|crc=173b5d2a
 {"payload":{"admission_snapshot":{"confirmed_spend":1710,"obligations_before":1710,"projected_obligations":1860,"quota":2300,"reserved_open":0},"block_id":"b3","cap":150,"permit_id":"P11"},"seq":62,"ts":62,"type":"permit_granted"}|crc=e9d1e9cd
 {"payload":{"bytes_reported":150,"kind":"progress","permit_id":"P11","receipt_seq":1},"seq":63,"ts":63,"type":"receipt_accepted"}|crc=cbcab45f
 {"payload":{"bytes_reported":150,"closed":true,"kind":"final","permit_id":"P11","receipt_seq":2},"seq":64,"ts":64,"type":"receipt_accepted"}|crc=f7dd4bf8
 {"payload":{"cap":150,"cert_id":"TC-P11-0012","final_value":150,"permit_id":"P11","released_bytes":0},"seq":65,"ts":65,"type":"termination_confirmed"}|crc=0d327af6
-{"payload":{"block_id":"b3","length":150,"permit_id":"P11","sha256":"fbff2e2f335181680ba40472341b11bbd51177439c021576aa7a4421ff7c7d67","stored_path":"blocks/6233.bin"},"seq":66,"ts":66,"type":"block_verified"}|crc=fba67105
+{"payload":{"block_id":"b3","length":150,"permit_id":"P11","sha256":"fbff2e2f335181680ba40472341b11bbd51177439c021576aa7a4421ff7c7d67","storage":{"backend":"local_block_store","stored_path":"blocks/6233.bin"}},"seq":66,"ts":66,"type":"block_verified"}|crc=9da6c594
 {"payload":{"admission_snapshot":{"confirmed_spend":1860,"obligations_before":1860,"projected_obligations":2260,"quota":2300,"reserved_open":0},"block_id":"b5","cap":400,"permit_id":"P12"},"seq":67,"ts":67,"type":"permit_granted"}|crc=b9b34896
 {"payload":{"block_id":"b5","cap":400,"permit_id":"P8","reason":"准入拒绝：发放后义务 2660 > 额度 2300（剩余可用 40）","snapshot":{"confirmed_spend":1860,"obligations_before":2260,"projected_obligations":2660,"quota":2300,"reserved_open":400}},"seq":68,"ts":68,"type":"permit_rejected"}|crc=92de3828
 {"payload":{"block_id":"b5","code":"permit_cap_mismatch","detail":"许可封顶 399 必须等于块长度 400","permit_id":"P10"},"seq":69,"ts":69,"type":"anomaly"}|crc=94866476

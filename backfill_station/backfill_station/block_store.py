@@ -34,6 +34,9 @@ def _write_all(fd: int, payload: bytes) -> None:
 
 
 class BlockStore:
+    # 与共享池适配（PoolBlockStorage）区分存储后端的标记。
+    is_pool = False
+
     def __init__(self, data_dir: str):
         self.dir = os.path.join(data_dir, BLOCK_STORE_DIR)
 

@@ -19,8 +19,9 @@ from .fixture import iter_spool_file
 from .journal import Journal
 from .manifest import Manifest
 from .restore import RestoreError, archive_readiness
+from .shared_pool import SharedBlockPool, SharedPoolError
 from .station import Station, StationError
-from .state import Ledger, replay
+from .state import Ledger, replay, shared_pool_view
 
 EXIT_OK = 0
 EXIT_BUSINESS_REJECT = 2
@@ -96,8 +97,13 @@ def cmd_block(args: argparse.Namespace) -> int:
         payload = fh.read()
     station = _open_station(args.data_dir)
     with station.open():
-        result = station.submit_block(
-            str(req["permit_id"]), str(req["block_id"]), payload)
+        try:
+            result = station.submit_block(
+                str(req["permit_id"]), str(req["block_id"]), payload)
+        except SharedPoolError as exc:
+            # 共享池损坏/关联冲突属致命错误，不能按普通业务拒绝处理。
+            _emit({"ok": False, "error": str(exc)})
+            return EXIT_FATAL
         _emit(result.to_dict())
         return EXIT_OK if result.ok else EXIT_BUSINESS_REJECT
 
@@ -166,6 +172,7 @@ def _report_from_ledger(ledger: Ledger) -> dict[str, Any]:
         "missing_blocks": missing,
         "archives": archive_readiness(ledger),
         "retired_archives": sorted(ledger.retired_archives),
+        "shared_pool": shared_pool_view(ledger),
         "permits": [{
             "permit_id": p.permit_id, "block_id": p.block_id, "cap": p.cap,
             "status": p.status, "max_progress": p.max_progress,
@@ -251,11 +258,58 @@ def cmd_retire(args: argparse.Namespace) -> int:
     with station.open():
         try:
             result = station.retire_archives(archive_ids, args.output_dir)
-        except RestoreError as exc:
+        except (RestoreError, SharedPoolError) as exc:
             _emit({"ok": False, "error": str(exc)})
             return EXIT_FATAL
     _emit(result)
     return EXIT_OK if result["ok"] else EXIT_BUSINESS_REJECT
+
+
+def cmd_pool_inventory(args: argparse.Namespace) -> int:
+    """按内容查看共享池库存：每个对象关联哪些批次、是否仍占用存储。
+
+    池目录可直接用 --pool-dir 给出，也可给 --data-dir 从批次清单读取。
+    """
+    pool_dir = _resolve_pool_dir(args)
+    if not os.path.exists(os.path.join(pool_dir, "pool.jsonl")):
+        _emit({"ok": False, "error": f"共享池尚未初始化或不存在: {pool_dir}"})
+        return EXIT_USAGE
+    pool = SharedBlockPool(pool_dir)
+    try:
+        result = pool.inventory(include_gc_check=args.gc_check)
+    except SharedPoolError as exc:
+        _emit({"ok": False, "error": str(exc)})
+        return EXIT_FATAL
+    _emit(result)
+    return EXIT_OK
+
+
+def cmd_pool_gc(args: argparse.Namespace) -> int:
+    """撤销未确认交付的残留关联（崩溃窗口收敛），并清扫失去关联的对象。"""
+    pool_dir = _resolve_pool_dir(args)
+    if not os.path.exists(os.path.join(pool_dir, "pool.jsonl")):
+        _emit({"ok": False, "error": f"共享池尚未初始化或不存在: {pool_dir}"})
+        return EXIT_USAGE
+    pool = SharedBlockPool(pool_dir)
+    try:
+        result = pool.gc_stale_links()
+    except SharedPoolError as exc:
+        _emit({"ok": False, "error": str(exc)})
+        return EXIT_FATAL
+    _emit(result)
+    return EXIT_OK
+
+
+def _resolve_pool_dir(args: argparse.Namespace) -> str:
+    if getattr(args, "pool_dir", None):
+        return os.path.realpath(args.pool_dir)
+    if getattr(args, "data_dir", None):
+        manifest = Manifest.read(args.data_dir)
+        if manifest.shared_pool is None:
+            raise StationError(
+                f"批次 {args.data_dir} 未配置共享池（shared_pool）")
+        return manifest.shared_pool.path
+    raise StationError("必须提供 --pool-dir 或已配置共享池的 --data-dir")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -324,6 +378,22 @@ def build_parser() -> argparse.ArgumentParser:
                    help='{"archive_ids": ["ARC-1", ...]}，- 为 stdin')
     p.set_defaults(func=cmd_retire)
 
+    p = sub.add_parser("pool-inventory",
+                       help="按内容查看共享池库存（关联批次与存储占用）")
+    p.add_argument("--pool-dir", help="共享池目录（与 --data-dir 二选一）")
+    p.add_argument("--data-dir",
+                   help="已配置 shared_pool 的批次数据目录，自动定位池")
+    p.add_argument("--gc-check", action="store_true",
+                   help="额外标注疑似残留（未确认交付）的关联，不做修改")
+    p.set_defaults(func=cmd_pool_inventory)
+
+    p = sub.add_parser("pool-gc",
+                       help="撤销未确认交付的残留关联并清扫失去关联的对象")
+    p.add_argument("--pool-dir", help="共享池目录（与 --data-dir 二选一）")
+    p.add_argument("--data-dir",
+                   help="已配置 shared_pool 的批次数据目录，自动定位池")
+    p.set_defaults(func=cmd_pool_gc)
+
     return parser
 
 
@@ -332,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except RestoreError as exc:
+    except (RestoreError, SharedPoolError) as exc:
         _emit({"ok": False, "error": str(exc)})
         return EXIT_FATAL
     except (StationError, ValueError, KeyError, FileNotFoundError) as exc:

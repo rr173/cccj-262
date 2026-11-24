@@ -40,10 +40,10 @@
 {"payload":{"block_id":null,"code":"receipt_exceeds_cap","detail":"许可 P1 收据字节 201 超过封顶 200","permit_id":"P1"},"seq":40,"ts":40,"type":"anomaly"}|crc=3db3c50d
 {"payload":{"block_id":null,"code":"receipt_progress_beyond_final","detail":"许可 P2 进度 150 超过已立终值 100","permit_id":"P2"},"seq":41,"ts":41,"type":"anomaly"}|crc=939cb036
 {"payload":{"block_id":null,"code":"final_receipt_value_conflict","detail":"许可 P1 终值冲突：已立 200，又报 205","permit_id":"P1"},"seq":42,"ts":42,"type":"anomaly"}|crc=bf65b9bb
-{"payload":{"block_id":"b1","length":200,"permit_id":"P1","sha256":"26f8fe002187cb436a991eda3afdd6ce5f58ff7adbad651b495a2ee63d226ba6","stored_path":"blocks/6231.bin"},"seq":43,"ts":43,"type":"block_verified"}|crc=800b0916
+{"payload":{"block_id":"b1","length":200,"permit_id":"P1","sha256":"26f8fe002187cb436a991eda3afdd6ce5f58ff7adbad651b495a2ee63d226ba6","storage":{"backend":"local_block_store","stored_path":"blocks/6231.bin"}},"seq":43,"ts":43,"type":"block_verified"}|crc=daf35db0
 {"payload":{"block_id":"b3","permit_id":"P3","reason":"摘要 d5e2e31004c8d723... 与清单不符"},"seq":44,"ts":44,"type":"block_rejected"}|crc=bd8d8eb2
 {"payload":{"block_id":"b3","code":"block_digest_mismatch","detail":"摘要 d5e2e31004c8d723... 与清单不符","permit_id":"P3"},"seq":45,"ts":45,"type":"anomaly"}|crc=936b716f
-{"payload":{"block_id":"b4","length":250,"permit_id":"P4","sha256":"f7fb44c3f9239ccef24071af4145e6539d0e1786d08f6d7a352c142746ec6342","stored_path":"blocks/6234.bin"},"seq":46,"ts":46,"type":"block_verified"}|crc=1b9644e4
+{"payload":{"block_id":"b4","length":250,"permit_id":"P4","sha256":"f7fb44c3f9239ccef24071af4145e6539d0e1786d08f6d7a352c142746ec6342","storage":{"backend":"local_block_store","stored_path":"blocks/6234.bin"}},"seq":46,"ts":46,"type":"block_verified"}|crc=41e375e8
 {"payload":{"block_id":"b5","permit_id":"P5","reason":"长度 350 != 清单长度 400"},"seq":47,"ts":47,"type":"block_rejected"}|crc=6e3179dc
 {"payload":{"block_id":"b5","code":"block_length_mismatch","detail":"长度 350 != 清单长度 400","permit_id":"P5"},"seq":48,"ts":48,"type":"anomaly"}|crc=bfc1d152
 {"payload":{"block_id":"b4","code":"block_permit_target_mismatch","detail":"许可 P6 绑定块 b1，不得提交块 b4","permit_id":"P6"},"seq":49,"ts":49,"type":"anomaly"}|crc=e456ad08

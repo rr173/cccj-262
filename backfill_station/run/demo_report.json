@@ -364,5 +364,6 @@
   "quota_bytes": 2300,
   "retired_archives": [
     "ARC-INSTR-FULL"
-  ]
+  ],
+  "shared_pool": null
 }
