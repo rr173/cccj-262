@@ -1,0 +1,19 @@
+{"bytes": 200, "kind": "progress", "permit_id": "P1", "seq": 1, "stream": "receipt"}
+{"bytes": 350, "closed": true, "kind": "final", "permit_id": "P5", "seq": 3, "stream": "receipt"}
+{"bytes": 200, "closed": true, "kind": "final", "permit_id": "P1", "seq": 3, "stream": "receipt"}
+{"bytes": 50, "closed": true, "kind": "final", "permit_id": "P6", "seq": 2, "stream": "receipt"}
+{"bytes": 250, "kind": "progress", "permit_id": "P4B", "seq": 1, "stream": "receipt"}
+{"bytes": 150, "closed": true, "kind": "final", "permit_id": "P3", "seq": 3, "stream": "receipt"}
+{"bytes": 100, "closed": true, "kind": "final", "permit_id": "P2", "seq": 3, "stream": "receipt"}
+{"bytes": 80, "kind": "progress", "permit_id": "P3", "seq": 2, "stream": "receipt"}
+{"bytes": 120, "kind": "progress", "permit_id": "P1", "seq": 1, "stream": "receipt"}
+{"bytes": 250, "kind": "progress", "permit_id": "P4", "seq": 1, "stream": "receipt"}
+{"bytes": 250, "closed": true, "kind": "final", "permit_id": "P4", "seq": 2, "stream": "receipt"}
+{"bytes": 200, "kind": "progress", "permit_id": "P5", "seq": 1, "stream": "receipt"}
+{"bytes": 50, "kind": "progress", "permit_id": "P6", "seq": 1, "stream": "receipt"}
+{"bytes": 100, "kind": "progress", "permit_id": "P2", "seq": 1, "stream": "receipt"}
+{"bytes": 100, "kind": "progress", "permit_id": "P2", "seq": 2, "stream": "receipt"}
+{"bytes": 200, "kind": "progress", "permit_id": "P1", "seq": 2, "stream": "receipt"}
+{"bytes": 250, "closed": true, "kind": "final", "permit_id": "P4B", "seq": 2, "stream": "receipt"}
+{"bytes": 350, "kind": "progress", "permit_id": "P5", "seq": 2, "stream": "receipt"}
+{"bytes": 80, "kind": "progress", "permit_id": "P3", "seq": 1, "stream": "receipt"}

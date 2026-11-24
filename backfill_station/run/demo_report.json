@@ -1,0 +1,308 @@
+{
+  "anomalies": [
+    {
+      "block_id": "b1",
+      "code": "permit_cap_mismatch",
+      "detail": "许可封顶 199 必须等于块长度 200",
+      "event_seq": 9,
+      "permit_id": "P-BADCAP"
+    },
+    {
+      "block_id": "b1",
+      "code": "permit_id_reused",
+      "detail": "许可 P1 已存在，禁止复用/重新启用",
+      "event_seq": 10,
+      "permit_id": "P1"
+    },
+    {
+      "block_id": null,
+      "code": "duplicate_progress_conflict",
+      "detail": "许可 P1 的 progress#seq=1 出现矛盾字节数 200 != 120",
+      "event_seq": 19,
+      "permit_id": "P1"
+    },
+    {
+      "block_id": null,
+      "code": "termination_cert_bad_signature",
+      "detail": "许可 P6 终止证签名核实失败",
+      "event_seq": 36,
+      "permit_id": "P6"
+    },
+    {
+      "block_id": null,
+      "code": "termination_cert_final_value_mismatch",
+      "detail": "许可 P6 终止证终值 120 与最终收据 50 不一致，拒绝减少占用",
+      "event_seq": 37,
+      "permit_id": "P6"
+    },
+    {
+      "block_id": null,
+      "code": "unknown_permit_cert",
+      "detail": "终止证引用未知许可 GHOST",
+      "event_seq": 39,
+      "permit_id": "GHOST"
+    },
+    {
+      "block_id": null,
+      "code": "receipt_exceeds_cap",
+      "detail": "许可 P1 收据字节 201 超过封顶 200",
+      "event_seq": 40,
+      "permit_id": "P1"
+    },
+    {
+      "block_id": null,
+      "code": "receipt_progress_beyond_final",
+      "detail": "许可 P2 进度 150 超过已立终值 100",
+      "event_seq": 41,
+      "permit_id": "P2"
+    },
+    {
+      "block_id": null,
+      "code": "final_receipt_value_conflict",
+      "detail": "许可 P1 终值冲突：已立 200，又报 205",
+      "event_seq": 42,
+      "permit_id": "P1"
+    },
+    {
+      "block_id": "b3",
+      "code": "block_digest_mismatch",
+      "detail": "摘要 d5e2e31004c8d723... 与清单不符",
+      "event_seq": 45,
+      "permit_id": "P3"
+    },
+    {
+      "block_id": "b5",
+      "code": "block_length_mismatch",
+      "detail": "长度 350 != 清单长度 400",
+      "event_seq": 48,
+      "permit_id": "P5"
+    },
+    {
+      "block_id": "b4",
+      "code": "block_permit_target_mismatch",
+      "detail": "许可 P6 绑定块 b1，不得提交块 b4",
+      "event_seq": 49,
+      "permit_id": "P6"
+    },
+    {
+      "block_id": "b1",
+      "code": "unknown_permit_receipt",
+      "detail": "块提交引用未知许可 GHOST",
+      "event_seq": 50,
+      "permit_id": "GHOST"
+    },
+    {
+      "block_id": "b3",
+      "code": "termination_cert_pending_final_receipt",
+      "detail": "终止证已到、最终收据未到，继续按封顶 150 占用",
+      "event_seq": 52,
+      "permit_id": "P9"
+    },
+    {
+      "block_id": "b3",
+      "code": "permit_id_reused",
+      "detail": "许可 P9 已存在，禁止复用/重新启用",
+      "event_seq": 56,
+      "permit_id": "P9"
+    },
+    {
+      "block_id": "b5",
+      "code": "permit_admission_denied",
+      "detail": "准入拒绝：发放后义务 2660 > 额度 2300（剩余可用 40）",
+      "event_seq": 68,
+      "permit_id": "P8"
+    },
+    {
+      "block_id": "b5",
+      "code": "permit_cap_mismatch",
+      "detail": "许可封顶 399 必须等于块长度 400",
+      "event_seq": 69,
+      "permit_id": "P10"
+    }
+  ],
+  "anomaly_count": 17,
+  "batch_id": "BATCH-DEMO-001",
+  "delivery": {
+    "blocks_delivered": 4,
+    "blocks_missing": 1,
+    "blocks_total": 5,
+    "delivered": [
+      {
+        "block_id": "b1",
+        "event_seq": 43,
+        "permit_id": "P1"
+      },
+      {
+        "block_id": "b2",
+        "event_seq": 61,
+        "permit_id": "P7"
+      },
+      {
+        "block_id": "b3",
+        "event_seq": 66,
+        "permit_id": "P11"
+      },
+      {
+        "block_id": "b4",
+        "event_seq": 46,
+        "permit_id": "P4"
+      }
+    ]
+  },
+  "journal_last_seq": 69,
+  "missing_blocks": [
+    {
+      "attempt_permit_ids": [
+        "P5",
+        "P12"
+      ],
+      "block_id": "b5",
+      "length": 400,
+      "rejected_payloads": 1,
+      "sha256": "61db942f23fb0c5e3d20a16b2d7f593f21868b0949700fbc0175180b00c74467"
+    }
+  ],
+  "permits": [
+    {
+      "block_id": "b1",
+      "cap": 200,
+      "cert_pending": false,
+      "final_value": 200,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 200,
+      "permit_id": "P1",
+      "reserved_now": 200,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b2",
+      "cap": 300,
+      "cert_pending": false,
+      "final_value": 100,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 100,
+      "permit_id": "P2",
+      "reserved_now": 100,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b3",
+      "cap": 150,
+      "cert_pending": false,
+      "final_value": 150,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 150,
+      "permit_id": "P3",
+      "reserved_now": 150,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b4",
+      "cap": 250,
+      "cert_pending": false,
+      "final_value": 250,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 250,
+      "permit_id": "P4",
+      "reserved_now": 250,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b4",
+      "cap": 250,
+      "cert_pending": false,
+      "final_value": 250,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 250,
+      "permit_id": "P4B",
+      "reserved_now": 250,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b5",
+      "cap": 400,
+      "cert_pending": false,
+      "final_value": 350,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 350,
+      "permit_id": "P5",
+      "reserved_now": 350,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b1",
+      "cap": 200,
+      "cert_pending": false,
+      "final_value": 50,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 50,
+      "permit_id": "P6",
+      "reserved_now": 50,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b3",
+      "cap": 150,
+      "cert_pending": false,
+      "final_value": 60,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 60,
+      "permit_id": "P9",
+      "reserved_now": 60,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b2",
+      "cap": 300,
+      "cert_pending": false,
+      "final_value": 300,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 300,
+      "permit_id": "P7",
+      "reserved_now": 300,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b3",
+      "cap": 150,
+      "cert_pending": false,
+      "final_value": 150,
+      "has_final_receipt": true,
+      "has_verified_termination": true,
+      "max_progress": 150,
+      "permit_id": "P11",
+      "reserved_now": 150,
+      "status": "confirmed"
+    },
+    {
+      "block_id": "b5",
+      "cap": 400,
+      "cert_pending": false,
+      "final_value": null,
+      "has_final_receipt": false,
+      "has_verified_termination": false,
+      "max_progress": 0,
+      "permit_id": "P12",
+      "reserved_now": 400,
+      "status": "open"
+    }
+  ],
+  "quota_account": {
+    "available": 40,
+    "confirmed_spend": 1860,
+    "invariant_holds": true,
+    "note": "confirmed_spend=已终止许可终值之和；reserved_open_caps=未终止许可按封顶保留之和",
+    "obligations_total": 2260,
+    "reserved_open_caps": 400
+  },
+  "quota_bytes": 2300
+}
