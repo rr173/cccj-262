@@ -70,6 +70,20 @@ class BlockStore:
                 os.unlink(tmp_path)
         return final_path
 
+    # ---- 回收 ----
+    def remove(self, block_id: str) -> bool:
+        """删除一个块的存储文件以回收空间；文件不存在则返回 False。
+
+        只删仓库内由块身份十六进制编码出的扁平文件，幂等；删除后 fsync
+        目录，保证崩溃后回收结果不丢。账本事件不受此影响。
+        """
+        path = self.path_for(block_id)
+        if not os.path.exists(path):
+            return False
+        os.unlink(path)
+        self._fsync_dir()
+        return True
+
     # ---- 读取与复核 ----
     def load_verified(self, block_id: str, length: int,
                       sha256: str) -> bytes:

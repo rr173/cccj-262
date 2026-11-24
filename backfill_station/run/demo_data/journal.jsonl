@@ -67,3 +67,4 @@
 {"payload":{"admission_snapshot":{"confirmed_spend":1860,"obligations_before":1860,"projected_obligations":2260,"quota":2300,"reserved_open":0},"block_id":"b5","cap":400,"permit_id":"P12"},"seq":67,"ts":67,"type":"permit_granted"}|crc=b9b34896
 {"payload":{"block_id":"b5","cap":400,"permit_id":"P8","reason":"准入拒绝：发放后义务 2660 > 额度 2300（剩余可用 40）","snapshot":{"confirmed_spend":1860,"obligations_before":2260,"projected_obligations":2660,"quota":2300,"reserved_open":400}},"seq":68,"ts":68,"type":"permit_rejected"}|crc=92de3828
 {"payload":{"block_id":"b5","code":"permit_cap_mismatch","detail":"许可封顶 399 必须等于块长度 400","permit_id":"P10"},"seq":69,"ts":69,"type":"anomaly"}|crc=94866476
+{"payload":{"archive_ids":["ARC-INSTR-FULL"]},"seq":70,"ts":70,"type":"archives_retired"}|crc=d26ad731

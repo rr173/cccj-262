@@ -36,7 +36,7 @@ class RestoreError(RuntimeError):
 class ArchiveRestoreStatus:
     archive_id: str
     path: str
-    state: str                 # published | blocked | verified_existing
+    state: str                 # published | blocked | verified_existing | retired
     length: int
     sha256: str
     missing_block_ids: list[str] = field(default_factory=list)
@@ -91,24 +91,37 @@ def _same_existing_file(path: str, length: int, sha256: str) -> bool:
 
 def restore_archives(ledger: Ledger, store: BlockStore,
                      output_dir: str) -> dict[str, Any]:
-    """恢复清单声明的全部档案，返回逐档案状态与汇总。"""
+    """恢复清单声明的全部未退役档案，返回逐档案状态与汇总。
+
+    已退役档案不得再次恢复：逐项标记为 retired 并跳过，不触碰文件
+    系统，也不计入缺块挡下数。
+    """
     manifest: Manifest = ledger.manifest
     results: list[ArchiveRestoreStatus] = []
 
     # 输出目录惰性创建：没有档案声明、或全部档案缺块时不触碰文件系统。
     root_real = os.path.realpath(output_dir)
     for archive in manifest.archives:
+        if archive.archive_id in ledger.retired_archives:
+            results.append(ArchiveRestoreStatus(
+                archive_id=archive.archive_id, path=archive.path,
+                state="retired", length=archive.length,
+                sha256=archive.sha256,
+                detail="档案已退役，不得再次恢复，已跳过"))
+            continue
         results.append(_restore_one(ledger, store, root_real, archive))
 
     published = [r for r in results if r.state in
                  ("published", "verified_existing")]
     blocked = [r for r in results if r.state == "blocked"]
+    retired = [r for r in results if r.state == "retired"]
     return {
         "ok": not blocked,
         "output_dir": root_real,
         "archives_declared": len(manifest.archives),
         "archives_published": len(published),
         "archives_blocked": len(blocked),
+        "archives_retired": len(retired),
         "results": [r.to_dict() for r in results],
     }
 
@@ -226,12 +239,47 @@ def _fsync_dir(path: str) -> None:
         os.close(fd)
 
 
+def remove_published_file(output_dir: str, archive: ArchiveSpec) -> Optional[str]:
+    """移除一个已退役档案的已发布文件，返回被删路径；本就不存在则 None。
+
+    与恢复共用同一路径围栏：目标（含符号链接）必须落在输出目录内，
+    越界即致命拒绝；目标不是普通文件（如目录）同样拒绝，绝不递归
+    删除。删除后把变空的父目录逐级修剪到输出根为止。幂等：重复调用
+    对已不存在的文件直接返回 None。
+    """
+    target = resolve_output_path(output_dir, archive.path)
+    root_real = os.path.realpath(output_dir)
+    if not os.path.lexists(target):
+        return None
+    if not os.path.isfile(target):
+        raise RestoreError(
+            f"退役档案 {archive.archive_id} 的目标 {target} 不是普通文件，"
+            f"拒绝移除")
+    os.unlink(target)
+    _fsync_dir(os.path.dirname(target))
+    _prune_empty_dirs(os.path.dirname(target), root_real)
+    return target
+
+
+def _prune_empty_dirs(start: str, root_real: str) -> None:
+    """从 start 逐级向上删掉变空的目录，绝不越过输出根。"""
+    current = start
+    while current != root_real and current.startswith(root_real + os.sep):
+        try:
+            os.rmdir(current)  # 仅当目录为空才成功，非空即停
+        except OSError:
+            break
+        current = os.path.dirname(current)
+
+
 def archive_readiness(ledger: Ledger) -> list[dict[str, Any]]:
-    """报告用：纯派生视图，列出每个档案的就绪状态与缺块。"""
+    """报告用：纯派生视图，列出每个档案的就绪/退役状态与缺块。"""
     view = []
     for archive in ledger.manifest.archives:
-        missing = [bid for bid in archive.block_ids
-                   if not ledger.blocks[bid].delivered]
+        retired = archive.archive_id in ledger.retired_archives
+        # 已退役档案不再参与恢复：不就绪、不缺块，仅标记退役。
+        missing = [] if retired else [bid for bid in archive.block_ids
+                                      if not ledger.blocks[bid].delivered]
         view.append({
             "archive_id": archive.archive_id,
             "path": archive.path,
@@ -240,6 +288,7 @@ def archive_readiness(ledger: Ledger) -> list[dict[str, Any]]:
             "block_ids": list(archive.block_ids),
             "blocks_total": len(archive.block_ids),
             "missing_block_ids": missing,
-            "ready": not missing,
+            "ready": not missing and not retired,
+            "retired": retired,
         })
     return view

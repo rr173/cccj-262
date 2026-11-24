@@ -15,7 +15,7 @@ from .canonical import digest_payload, verify_signature
 from .block_store import BlockStore
 from .journal import DataDirLock, Event, Journal, JOURNAL_NAME
 from .manifest import Manifest
-from .restore import archive_readiness, restore_archives
+from .restore import archive_readiness, remove_published_file, restore_archives
 from .state import Ledger, ST_CONFIRMED, ST_OPEN, replay
 
 HMAC_KEY_NAME = "hmac.key"
@@ -458,7 +458,87 @@ class Station:
         ledger = self._require_ready()
         return restore_archives(ledger, self.block_store, output_dir)
 
-    # ---- 6. 对账报告 ----
+    # ---- 6. 档案退役（标记退役 + 移除已发布文件 + 回收专属块存储） ----
+    def retire_archives(self, archive_ids: Any,
+                        output_dir: str) -> dict[str, Any]:
+        """把本批次已声明的档案标记为退役，并回收不再被引用的存储。
+
+        - 原子校验：请求含任何未声明的 archive_id 时整次拒绝，不追加
+          事件、不动任何文件，状态完全不变；
+        - 幂等：重复同一退役请求结果一致——已退役的档案不再追加事件，
+          文件清理是幂等的（顺便修复上次崩溃可能遗留的半成品清理）；
+        - 退役档案不得再次恢复（restore 直接跳过）；
+        - 块可能被多个档案共享：只有不再被任何未退役档案引用的块才
+          删除存储文件，仍被引用的块保留并继续支持恢复；
+        - 不动钱账与历史：许可、额度、收据与已交付事实完全不变。
+        """
+        ledger = self._require_ready()
+        if (not isinstance(archive_ids, list) or not archive_ids
+                or any(not isinstance(a, str) or not a
+                       for a in archive_ids)):
+            raise StationError("archive_ids 必须是非空字符串列表")
+        # 同一请求内重复出现的标识去重（保持顺序），退役是集合语义。
+        requested = list(dict.fromkeys(archive_ids))
+
+        unknown = [a for a in requested
+                   if ledger.manifest.get_archive(a) is None]
+        if unknown:
+            # 整次拒绝：不追加任何事件、不触碰文件，状态不变。
+            return {
+                "ok": False,
+                "code": "archive_unknown",
+                "detail": (f"请求包含本批次未声明的档案 {unknown}，"
+                           f"整次退役被拒绝，状态不变"),
+                "unknown_archive_ids": unknown,
+                "event_seq": None,
+            }
+
+        already = [a for a in requested if a in ledger.retired_archives]
+        new = [a for a in requested if a not in ledger.retired_archives]
+        event_seq: Optional[int] = None
+        if new:
+            event = self._append("archives_retired", {"archive_ids": new})
+            event_seq = event.seq
+
+        # 文件清理对每次请求都执行（幂等）：既移除本次请求涉及的已发布
+        # 文件，也全局清扫当前只被退役档案引用的块存储文件。
+        removed_files = []
+        per_archive = []
+        for archive_id in requested:
+            spec = ledger.manifest.get_archive(archive_id)
+            assert spec is not None  # 上面已校验全部已声明
+            removed = remove_published_file(output_dir, spec)
+            if removed is not None:
+                removed_files.append(removed)
+            per_archive.append({
+                "archive_id": archive_id,
+                "state": "already_retired" if archive_id in already
+                         else "retired",
+                "removed_file": removed,
+            })
+
+        reclaimed_now = []
+        for block_id in ledger.reclaimable_block_ids():
+            if self.block_store.remove(block_id):
+                reclaimed_now.append(block_id)
+
+        return {
+            "ok": True,
+            "code": "archives_retired" if new else "archives_already_retired",
+            "detail": (f"新退役 {len(new)} 个档案，移除 {len(removed_files)} "
+                       f"个已发布文件，回收 {len(reclaimed_now)} 个块存储文件"),
+            "event_seq": event_seq,
+            "output_dir": os.path.realpath(output_dir),
+            "results": per_archive,
+            "retired_now": new,
+            "already_retired": already,
+            "removed_files": removed_files,
+            "blocks_reclaimed_now": reclaimed_now,
+            "retained_block_ids": ledger.retained_block_ids(),
+            "reclaimed_block_ids": ledger.reclaimed_block_ids(),
+        }
+
+    # ---- 7. 对账报告 ----
     def report(self) -> dict[str, Any]:
         ledger = self._require_ready()
         m = ledger.manifest
@@ -492,6 +572,8 @@ class Station:
              "event_seq": b.delivered_event_seq}
             for bid, b in ledger.blocks.items() if b.delivered
         ]
+        retained = ledger.retained_block_ids()
+        reclaimed = ledger.reclaimed_block_ids()
         return {
             "batch_id": m.batch_id,
             "quota_bytes": m.quota_bytes,
@@ -508,11 +590,18 @@ class Station:
             "delivery": {
                 "blocks_total": len(ledger.blocks),
                 "blocks_delivered": len(delivered),
+                "blocks_retained": len(retained),
                 "blocks_missing": len(missing),
                 "delivered": delivered,
+                "retained_block_ids": retained,
+                "reclaimed_block_ids": reclaimed,
+                "note": "delivered=历史可信交付事实（不随退役改变）；"
+                        "retained_block_ids=当前仍保留存储的已交付块；"
+                        "reclaimed_block_ids=已交付但存储已回收的块",
             },
             "missing_blocks": missing,
             "archives": archive_readiness(ledger),
+            "retired_archives": sorted(ledger.retired_archives),
             "permits": permits_view,
             "anomalies": list(ledger.anomalies),
             "anomaly_count": len(ledger.anomalies),

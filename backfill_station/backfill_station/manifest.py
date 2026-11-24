@@ -183,6 +183,12 @@ class Manifest:
                 return spec
         return None
 
+    def get_archive(self, archive_id: str) -> ArchiveSpec | None:
+        for spec in self.archives:
+            if spec.archive_id == archive_id:
+                return spec
+        return None
+
     def to_dict(self) -> dict[str, Any]:
         out = {
             "batch_id": self.batch_id,

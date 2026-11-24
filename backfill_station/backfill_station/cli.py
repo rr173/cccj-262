@@ -132,6 +132,8 @@ def _report_from_ledger(ledger: Ledger) -> dict[str, Any]:
         "attempt_permit_ids": list(b.attempt_permit_ids),
         "rejected_payloads": b.rejected_payloads,
     } for b in ledger.blocks.values() if not b.delivered]
+    retained = ledger.retained_block_ids()
+    reclaimed = ledger.reclaimed_block_ids()
     return {
         "batch_id": m.batch_id,
         "quota_bytes": m.quota_bytes,
@@ -149,14 +151,21 @@ def _report_from_ledger(ledger: Ledger) -> dict[str, Any]:
             "blocks_total": len(ledger.blocks),
             "blocks_delivered": sum(1 for b in ledger.blocks.values()
                                     if b.delivered),
+            "blocks_retained": len(retained),
             "blocks_missing": len(missing),
             "delivered": [
                 {"block_id": bid, "permit_id": b.delivered_by_permit,
                  "event_seq": b.delivered_event_seq}
                 for bid, b in ledger.blocks.items() if b.delivered],
+            "retained_block_ids": retained,
+            "reclaimed_block_ids": reclaimed,
+            "note": "delivered=历史可信交付事实（不随退役改变）；"
+                    "retained_block_ids=当前仍保留存储的已交付块；"
+                    "reclaimed_block_ids=已交付但存储已回收的块",
         },
         "missing_blocks": missing,
         "archives": archive_readiness(ledger),
+        "retired_archives": sorted(ledger.retired_archives),
         "permits": [{
             "permit_id": p.permit_id, "block_id": p.block_id, "cap": p.cap,
             "status": p.status, "max_progress": p.max_progress,
@@ -215,7 +224,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     """档案恢复：已核验块按清单顺序组装并原子发布到输出目录。
 
     退出码：全部档案已发布（或本就没有档案声明）0；存在缺块被挡下
-    的档案 2；路径越界/块仓库损坏等致命错误 4。
+    的档案 2；路径越界/块仓库损坏等致命错误 4。已退役档案跳过不计。
     """
     station = _open_station(args.data_dir)
     with station.open():
@@ -228,6 +237,25 @@ def cmd_restore(args: argparse.Namespace) -> int:
     if result["archives_blocked"]:
         return EXIT_BUSINESS_REJECT
     return EXIT_OK
+
+
+def cmd_retire(args: argparse.Namespace) -> int:
+    """档案退役：标记退役、移除已发布文件并回收不再被引用的块存储。
+
+    退出码：成功 0；请求含未声明 archive_id（整次拒绝，状态不变）2；
+    用法错误 3；路径越界等致命错误 4。
+    """
+    req = _read_json(args.request)
+    archive_ids = req.get("archive_ids") if isinstance(req, dict) else None
+    station = _open_station(args.data_dir)
+    with station.open():
+        try:
+            result = station.retire_archives(archive_ids, args.output_dir)
+        except RestoreError as exc:
+            _emit({"ok": False, "error": str(exc)})
+            return EXIT_FATAL
+    _emit(result)
+    return EXIT_OK if result["ok"] else EXIT_BUSINESS_REJECT
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -287,6 +315,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-dir", required=True,
                    help="档案发布目录；清单相对路径不得越出该目录")
     p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("retire", help="退役档案并回收不再被引用的块存储")
+    p.add_argument("--data-dir", required=True)
+    p.add_argument("--output-dir", required=True,
+                   help="已发布档案所在目录；与恢复时使用的输出目录一致")
+    p.add_argument("--request", required=True,
+                   help='{"archive_ids": ["ARC-1", ...]}，- 为 stdin')
+    p.set_defaults(func=cmd_retire)
 
     return parser
 

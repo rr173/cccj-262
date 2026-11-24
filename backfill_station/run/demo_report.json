@@ -134,7 +134,8 @@
       "length": 900,
       "missing_block_ids": [],
       "path": "instrument/full_profile.dat",
-      "ready": true,
+      "ready": false,
+      "retired": true,
       "sha256": "41bcc1e97cc5d4c6b5fdaab402a19f5bb6a29f63305fa5252b0e0a1424a9da93"
     },
     {
@@ -148,6 +149,7 @@
       "missing_block_ids": [],
       "path": "instrument/b14_pair.dat",
       "ready": true,
+      "retired": false,
       "sha256": "cd0a47c129fe4158cf487ecb81b35b0b060fbc97b6bf6fdfe27f57b2fbf04a8c"
     },
     {
@@ -162,6 +164,7 @@
       ],
       "path": "pending/b5_only.dat",
       "ready": false,
+      "retired": false,
       "sha256": "61db942f23fb0c5e3d20a16b2d7f593f21868b0949700fbc0175180b00c74467"
     }
   ],
@@ -169,6 +172,7 @@
   "delivery": {
     "blocks_delivered": 4,
     "blocks_missing": 1,
+    "blocks_retained": 2,
     "blocks_total": 5,
     "delivered": [
       {
@@ -191,9 +195,18 @@
         "event_seq": 46,
         "permit_id": "P4"
       }
+    ],
+    "note": "delivered=历史可信交付事实（不随退役改变）；retained_block_ids=当前仍保留存储的已交付块；reclaimed_block_ids=已交付但存储已回收的块",
+    "reclaimed_block_ids": [
+      "b2",
+      "b3"
+    ],
+    "retained_block_ids": [
+      "b1",
+      "b4"
     ]
   },
-  "journal_last_seq": 69,
+  "journal_last_seq": 70,
   "missing_blocks": [
     {
       "attempt_permit_ids": [
@@ -348,5 +361,8 @@
     "obligations_total": 2260,
     "reserved_open_caps": 400
   },
-  "quota_bytes": 2300
+  "quota_bytes": 2300,
+  "retired_archives": [
+    "ARC-INSTR-FULL"
+  ]
 }

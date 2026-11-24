@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .journal import Event
-from .manifest import BlockSpec, Manifest
+from .manifest import ArchiveSpec, BlockSpec, Manifest
 
 # 许可生命周期：
 #   open      已领取、尚未拿到正式终止证，按封顶占用预算
@@ -71,6 +71,9 @@ class Ledger:
     permits: dict[str, PermitState] = field(default_factory=dict)
     blocks: dict[str, BlockState] = field(default_factory=dict)
     anomalies: list[dict[str, Any]] = field(default_factory=list)
+    # 已退役档案标识集合：退役只影响档案可恢复性与块存储回收，
+    # 绝不改动许可、额度、收据与历史交付事实。
+    retired_archives: set[str] = field(default_factory=set)
     last_seq: int = 0
 
     # ---- 派生口径 ----
@@ -101,6 +104,34 @@ class Ledger:
 
     def missing_blocks(self) -> list[BlockState]:
         return [b for b in self.blocks.values() if not b.delivered]
+
+    # ---- 档案退役派生口径（纯账本推导，不触碰文件系统） ----
+    def live_archives(self) -> list[ArchiveSpec]:
+        """未退役的档案声明：恢复操作只服务这些档案。"""
+        return [a for a in self.manifest.archives
+                if a.archive_id not in self.retired_archives]
+
+    def reclaimable_block_ids(self) -> list[str]:
+        """只被已退役档案引用的块：存储文件可回收（无论是否交付过）。"""
+        live_refs: set[str] = set()
+        for archive in self.live_archives():
+            live_refs.update(archive.block_ids)
+        all_refs: set[str] = set()
+        for archive in self.manifest.archives:
+            all_refs.update(archive.block_ids)
+        return sorted(all_refs - live_refs)
+
+    def retained_block_ids(self) -> list[str]:
+        """当前仍保留存储的已交付块（未被退役回收的）。"""
+        reclaimable = set(self.reclaimable_block_ids())
+        return [bid for bid, b in self.blocks.items()
+                if b.delivered and bid not in reclaimable]
+
+    def reclaimed_block_ids(self) -> list[str]:
+        """已交付但不再保留存储的块（只被已退役档案引用）。"""
+        reclaimable = set(self.reclaimable_block_ids())
+        return sorted(bid for bid, b in self.blocks.items()
+                      if b.delivered and bid in reclaimable)
 
     def check_invariant(self, where: str) -> None:
         if self.obligations > self.manifest.quota_bytes:
@@ -227,6 +258,16 @@ class Ledger:
         elif etype == "block_rejected":
             block = self._require_block(p["block_id"], event.seq)
             block.rejected_payloads += 1
+
+        elif etype == "archives_retired":
+            # 退役只登记档案状态，不动钱账与交付事实，无需检查额度不变量。
+            for archive_id in p["archive_ids"]:
+                if self.manifest.get_archive(archive_id) is None:
+                    raise StateError(
+                        f"退役事件引用未声明档案 {archive_id}")
+                if archive_id in self.retired_archives:
+                    raise StateError(f"档案 {archive_id} 被重复退役")
+                self.retired_archives.add(archive_id)
 
         else:
             raise StateError(f"未知事件类型: {etype}")

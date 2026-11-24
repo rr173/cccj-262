@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backfill_station.canonical import canonical_json, digest_payload  # noqa: E402
+from backfill_station.block_store import BlockStore  # noqa: E402
 from backfill_station.fixture import TransmissionFixture  # noqa: E402
 from backfill_station.station import Station  # noqa: E402
 
@@ -333,27 +334,8 @@ def main() -> int:
         show(st.grant_permit("P8", "b5", 400))
         show(st.grant_permit("P10", "b5", 399))
 
-    # ---- 8. 最终对账 ----
-    banner("阶段七：最终对账报告")
-    with station.open() as st:
-        report = st.report()
-    with open(REPORT_PATH, "w", encoding="utf-8") as fh:
-        fh.write(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
-        fh.write("\n")
-
-    qa = report["quota_account"]
-    print(f"额度 {report['quota_bytes']} | 已确认实付 {qa['confirmed_spend']} "
-          f"| 封顶保留 {qa['reserved_open_caps']} | 义务合计 "
-          f"{qa['obligations_total']} | 可用 {qa['available']} "
-          f"| 不变量 {qa['invariant_holds']}")
-    print(f"交付 {report['delivery']['blocks_delivered']}/"
-          f"{report['delivery']['blocks_total']}，缺块 "
-          f"{[b['block_id'] for b in report['missing_blocks']]}")
-    print(f"异常登记 {report['anomaly_count']} 条，报告已写 {REPORT_PATH}")
-    print(f"日志副本 {JOURNAL_COPY}（可独立执行 replay 子命令重演）")
-
-    # ---- 9. 档案恢复：组装已核验块，缺块档案整体挡下，重复恢复幂等 ----
-    banner("阶段八：档案恢复（原子发布，缺块不生成文件，重复恢复一致）")
+    # ---- 8. 档案恢复：组装已核验块，缺块档案整体挡下，重复恢复幂等 ----
+    banner("阶段七：档案恢复（原子发布，缺块不生成文件，重复恢复一致）")
     with station.open() as st:
         restore_report = st.restore_archives(ARCHIVE_DIR)
         seq_after_restore = st.ledger.last_seq
@@ -388,6 +370,74 @@ def main() -> int:
     print(f"  已发布: {pair_path}")
     print("  ARC-PENDING-B5 因缺块 b5 未生成任何文件；无临时文件残留；"
           "日志序号未变")
+
+    # ---- 9. 档案退役：标记退役、移除已发布文件、回收专属块存储 ----
+    banner("阶段八：档案退役（共享块保留，专属块回收，退役不可恢复）")
+    store = BlockStore(DATA_DIR)
+    with station.open() as st:
+        # ARC-INSTR-FULL 完成使用周期：b2/b3 是它独占的块，
+        # b1/b4 仍被未退役的 ARC-INSTR-B14 引用。
+        retire_result = st.retire_archives(["ARC-INSTR-FULL"], ARCHIVE_DIR)
+        print("  ->", canonical_json(
+            {k: retire_result[k] for k in
+             ("ok", "code", "retired_now", "removed_files",
+              "blocks_reclaimed_now", "retained_block_ids")}))
+        assert not os.path.exists(full_path)       # 已发布文件被移除
+        assert os.path.exists(pair_path)           # B14 的发布文件保留
+        # 独占块 b2/b3 的存储文件被回收；共享块 b1/b4 必须保留
+        assert not os.path.exists(store.path_for("b2"))
+        assert not os.path.exists(store.path_for("b3"))
+        assert os.path.exists(store.path_for("b1"))
+        assert os.path.exists(store.path_for("b4"))
+        print("  已移除发布文件并回收独占块 b2/b3；共享块 b1/b4 保留")
+
+        # 重复执行同一退役请求：结果一致，不再追加日志事件
+        seq_before = st.ledger.last_seq
+        again = st.retire_archives(["ARC-INSTR-FULL"], ARCHIVE_DIR)
+        assert again["code"] == "archives_already_retired"
+        assert st.ledger.last_seq == seq_before
+        print("  重复退役幂等：", again["code"], "（日志序号不变）")
+
+        # 请求含未知 archive_id：整次拒绝，状态不变
+        rejected = st.retire_archives(["ARC-INSTR-B14", "ARC-GHOST"],
+                                      ARCHIVE_DIR)
+        assert not rejected["ok"] and rejected["code"] == "archive_unknown"
+        assert st.ledger.last_seq == seq_before
+        assert "ARC-INSTR-B14" not in st.ledger.retired_archives
+        assert os.path.exists(pair_path)
+        print("  含未知档案的退役请求被整次拒绝：", rejected["code"])
+
+        # 退役档案不得再次恢复；存活档案用保留的共享块照常确认
+        restored = st.restore_archives(ARCHIVE_DIR)
+        states = {r["archive_id"]: r["state"] for r in restored["results"]}
+        assert states["ARC-INSTR-FULL"] == "retired"
+        assert states["ARC-INSTR-B14"] == "verified_existing"
+        assert states["ARC-PENDING-B5"] == "blocked"
+        assert not os.path.exists(full_path)
+        print("  退役后恢复状态:", states)
+
+    # ---- 10. 最终对账（退役之后：区分已交付/仍保留/已退役） ----
+    banner("阶段九：最终对账报告")
+    with station.open() as st:
+        report = st.report()
+    with open(REPORT_PATH, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+        fh.write("\n")
+
+    qa = report["quota_account"]
+    print(f"额度 {report['quota_bytes']} | 已确认实付 {qa['confirmed_spend']} "
+          f"| 封顶保留 {qa['reserved_open_caps']} | 义务合计 "
+          f"{qa['obligations_total']} | 可用 {qa['available']} "
+          f"| 不变量 {qa['invariant_holds']}")
+    delivery = report["delivery"]
+    print(f"交付 {delivery['blocks_delivered']}/"
+          f"{delivery['blocks_total']}（历史事实），当前仍保留 "
+          f"{delivery['blocks_retained']} 块 {delivery['retained_block_ids']}，"
+          f"已回收 {delivery['reclaimed_block_ids']}，缺块 "
+          f"{[b['block_id'] for b in report['missing_blocks']]}")
+    print(f"已退役档案 {report['retired_archives']}")
+    print(f"异常登记 {report['anomaly_count']} 条，报告已写 {REPORT_PATH}")
+    print(f"日志副本 {JOURNAL_COPY}（可独立执行 replay 子命令重演）")
     return 0
 
 
